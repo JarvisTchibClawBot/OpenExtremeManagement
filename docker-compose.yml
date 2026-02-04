@@ -57,6 +57,15 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  # Mock Extreme Networks Switch for testing
+  mock-switch:
+    build:
+      context: ./mock
+      dockerfile: Dockerfile
+    ports:
+      - "9443:9443"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
