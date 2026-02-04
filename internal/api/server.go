@@ -426,26 +426,34 @@ func (s *Server) updateSystemInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"switch": sw})
 }
 
-// pushSystemInfoToSwitch sends system info updates to the switch
+// pushSystemInfoToSwitch sends system info updates to the switch via CLI
 func (s *Server) pushSystemInfoToSwitch(sw *Switch, req *UpdateSystemInfoRequest) error {
 	protocol := "http"
 	if sw.UseHTTPS {
 		protocol = "https"
 	}
 
-	// Try /config/system endpoint with PATCH
-	url := fmt.Sprintf("%s://%s:%d/rest/openapi/v0/config/system", protocol, sw.IPAddress, sw.Port)
+	// Extreme Networks doesn't support PATCH/PUT on /config/system
+	// We must use the CLI endpoint to modify these values
+	url := fmt.Sprintf("%s://%s:%d/rest/openapi/v0/operation/system/cli", protocol, sw.IPAddress, sw.Port)
 
-	// Build payload with only provided fields
-	payload := make(map[string]interface{})
+	// Build CLI commands
+	commands := []string{"configure terminal"}
+	
 	if req.SysName != "" {
-		payload["sysName"] = req.SysName
+		commands = append(commands, fmt.Sprintf("hostname %s", req.SysName))
 	}
 	if req.SysLocation != "" {
-		payload["sysLocation"] = req.SysLocation
+		commands = append(commands, fmt.Sprintf("snmp-server location %s", req.SysLocation))
 	}
 	if req.SysContact != "" {
-		payload["sysContact"] = req.SysContact
+		commands = append(commands, fmt.Sprintf("snmp-server contact %s", req.SysContact))
+	}
+	
+	commands = append(commands, "exit")
+
+	payload := map[string]interface{}{
+		"commands": commands,
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -453,9 +461,9 @@ func (s *Server) pushSystemInfoToSwitch(sw *Switch, req *UpdateSystemInfoRequest
 		return fmt.Errorf("failed to marshal payload: %v", err)
 	}
 
-	log.Printf("🔧 Updating system info on %s: %s", sw.Name, string(jsonData))
+	log.Printf("🔧 Updating system info on %s via CLI: %v", sw.Name, commands)
 
-	httpReq, _ := http.NewRequest("PATCH", url, bytes.NewReader(jsonData))
+	httpReq, _ := http.NewRequest("POST", url, bytes.NewReader(jsonData))
 	httpReq.Header.Set("X-Auth-Token", sw.AuthToken)
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -468,7 +476,7 @@ func (s *Server) pushSystemInfoToSwitch(sw *Switch, req *UpdateSystemInfoRequest
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("❌ System update failed (status %d): %s", resp.StatusCode, string(body))
+		log.Printf("❌ CLI command failed (status %d): %s", resp.StatusCode, string(body))
 		return fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
