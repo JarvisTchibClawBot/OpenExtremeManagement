@@ -12,7 +12,9 @@ interface AddSwitchModalProps {
 export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitchModalProps) {
   const [name, setName] = useState('');
   const [ipAddress, setIpAddress] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [port, setPort] = useState('9443');
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -26,13 +28,21 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
     try {
       const token = localStorage.getItem('token');
       await axios.post('/api/v1/switches', 
-        { name, ip_address: ipAddress, api_key: apiKey },
+        { 
+          name, 
+          ip_address: ipAddress, 
+          port: parseInt(port),
+          username,
+          password
+        },
         { headers: { Authorization: `Bearer ${token}` }}
       );
       
       setName('');
       setIpAddress('');
-      setApiKey('');
+      setPort('9443');
+      setUsername('admin');
+      setPassword('');
       onSuccess();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to add switch');
@@ -43,9 +53,9 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+      <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Add New Switch</h2>
+          <h2 className="text-xl font-bold text-white">Add Fabric Engine Switch</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition"
@@ -77,34 +87,63 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
             />
           </div>
 
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="col-span-2">
+              <label className="block text-gray-300 text-sm font-medium mb-2">
+                IP Address
+              </label>
+              <input
+                type="text"
+                value={ipAddress}
+                onChange={(e) => setIpAddress(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-extreme-blue focus:border-transparent transition"
+                placeholder="192.168.1.1"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-2">
+                Port
+              </label>
+              <input
+                type="number"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-extreme-blue focus:border-transparent transition"
+                placeholder="9443"
+                required
+              />
+            </div>
+          </div>
+
           <div className="mb-4">
             <label className="block text-gray-300 text-sm font-medium mb-2">
-              IP Address
+              Username
             </label>
             <input
               type="text"
-              value={ipAddress}
-              onChange={(e) => setIpAddress(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-extreme-blue focus:border-transparent transition"
-              placeholder="e.g., 192.168.1.1"
+              placeholder="admin"
               required
             />
           </div>
 
           <div className="mb-6">
             <label className="block text-gray-300 text-sm font-medium mb-2">
-              API Key
+              Password
             </label>
             <input
               type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-extreme-blue focus:border-transparent transition"
-              placeholder="Enter API key"
+              placeholder="Enter password"
               required
             />
             <p className="mt-2 text-xs text-gray-500">
-              OpenAPI is available on Fabric Engine 9.3+
+              OpenAPI requires Fabric Engine 9.3+
             </p>
           </div>
 

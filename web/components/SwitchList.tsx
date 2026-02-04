@@ -3,23 +3,30 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
+interface SystemInfo {
+  sysName: string;
+  sysDescription: string;
+  modelName: string;
+  firmwareVersion: string;
+  nosType: string;
+  numPorts: number;
+  isDigitalTwin: boolean;
+}
+
 interface Switch {
   id: number;
   name: string;
   ip_address: string;
-  model: string;
+  port: number;
   status: string;
-  last_seen: string;
+  last_sync: string | null;
+  system_info: SystemInfo | null;
 }
 
 export default function SwitchList() {
   const [switches, setSwitches] = useState<Switch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchSwitches();
-  }, []);
 
   const fetchSwitches = async () => {
     try {
@@ -28,10 +35,49 @@ export default function SwitchList() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSwitches(response.data.switches || []);
+      setError('');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch switches');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSwitches();
+    
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(fetchSwitches, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'online':
+        return 'bg-green-500/20 text-green-400';
+      case 'connecting':
+        return 'bg-yellow-500/20 text-yellow-400';
+      case 'auth_failed':
+        return 'bg-red-500/20 text-red-400';
+      case 'error':
+        return 'bg-red-500/20 text-red-400';
+      default:
+        return 'bg-gray-500/20 text-gray-400';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'online':
+        return 'Online';
+      case 'connecting':
+        return 'Connecting...';
+      case 'auth_failed':
+        return 'Auth Failed';
+      case 'error':
+        return 'Error';
+      default:
+        return status;
     }
   };
 
@@ -58,7 +104,7 @@ export default function SwitchList() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
         </svg>
         <h3 className="text-xl font-semibold text-white mb-2">No switches yet</h3>
-        <p className="text-gray-400">Add your first Extreme Networks switch to get started</p>
+        <p className="text-gray-400">Add your first Extreme Networks Fabric Engine switch to get started</p>
       </div>
     );
   }
@@ -76,22 +122,53 @@ export default function SwitchList() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
               </svg>
             </div>
-            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-              sw.status === 'online' 
-                ? 'bg-green-500/20 text-green-400' 
-                : 'bg-red-500/20 text-red-400'
-            }`}>
-              {sw.status}
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(sw.status)}`}>
+              {getStatusLabel(sw.status)}
             </span>
           </div>
-          
+
           <h3 className="text-lg font-semibold text-white mb-1">{sw.name}</h3>
-          <p className="text-gray-400 text-sm mb-3">{sw.ip_address}</p>
-          
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>{sw.model || 'Unknown model'}</span>
-            <span>Last seen: {sw.last_seen ? new Date(sw.last_seen).toLocaleString() : 'Never'}</span>
-          </div>
+          <p className="text-gray-400 text-sm mb-3">{sw.ip_address}:{sw.port}</p>
+
+          {sw.system_info ? (
+            <div className="space-y-2 pt-3 border-t border-gray-700">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Model</span>
+                <span className="text-white font-medium">{sw.system_info.modelName}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Version</span>
+                <span className="text-white">{sw.system_info.firmwareVersion}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">System Name</span>
+                <span className="text-white">{sw.system_info.sysName}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Ports</span>
+                <span className="text-white">{sw.system_info.numPorts}</span>
+              </div>
+              {sw.system_info.isDigitalTwin && (
+                <div className="mt-2">
+                  <span className="px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded-full">
+                    Digital Twin
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="pt-3 border-t border-gray-700">
+              <p className="text-gray-500 text-sm">
+                {sw.status === 'connecting' ? 'Fetching system info...' : 'System info unavailable'}
+              </p>
+            </div>
+          )}
+
+          {sw.last_sync && (
+            <p className="text-xs text-gray-600 mt-3">
+              Last sync: {new Date(sw.last_sync).toLocaleTimeString()}
+            </p>
+          )}
         </div>
       ))}
     </div>
