@@ -1,13 +1,16 @@
 package api
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -713,18 +716,67 @@ func (s *Server) uploadSchema(c *gin.Context) {
 		return
 	}
 
+	// Check if it's a gzip file and extract openapi.yaml
+	schema := string(schemaBytes)
+	if len(schemaBytes) > 2 && schemaBytes[0] == 0x1f && schemaBytes[1] == 0x8b {
+		// It's a gzip file, extract it
+		extractedSchema, err := extractOpenAPIFromGzip(schemaBytes)
+		if err != nil {
+			log.Printf("⚠️  Failed to extract gzip: %v, storing as-is", err)
+		} else {
+			schema = extractedSchema
+			log.Printf("✅ Extracted OpenAPI schema from .tar.gz archive")
+		}
+	}
+
 	s.mu.Lock()
 	sw := s.switches[switchID]
 	if sw != nil {
-		sw.OpenAPISchema = string(schemaBytes)
+		sw.OpenAPISchema = schema
 		now := time.Now()
 		sw.SchemaFetchedAt = &now
 	}
 	delete(s.uploadTokens, token)
 	s.mu.Unlock()
 
-	log.Printf("✅ Received OpenAPI schema for switch %d (%d bytes)", switchID, len(schemaBytes))
+	log.Printf("✅ Received OpenAPI schema for switch %d (%d bytes)", switchID, len(schema))
 	c.JSON(http.StatusOK, gin.H{"message": "Schema uploaded successfully"})
+}
+
+// extractOpenAPIFromGzip extracts openapi.yaml from a .tar.gz archive
+func extractOpenAPIFromGzip(data []byte) (string, error) {
+	// Create gzip reader
+	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("failed to create gzip reader: %v", err)
+	}
+	defer gzReader.Close()
+
+	// Create tar reader
+	tarReader := tar.NewReader(gzReader)
+
+	// Look for openapi.yaml in the archive
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to read tar: %v", err)
+		}
+
+		// Check if this is the openapi.yaml file
+		if strings.HasSuffix(header.Name, "openapi.yaml") || strings.HasSuffix(header.Name, "openapi.yml") {
+			// Read the file content
+			content, err := io.ReadAll(tarReader)
+			if err != nil {
+				return "", fmt.Errorf("failed to read openapi.yaml: %v", err)
+			}
+			return string(content), nil
+		}
+	}
+
+	return "", fmt.Errorf("openapi.yaml not found in archive")
 }
 
 // downloadSchema returns the stored OpenAPI schema for download

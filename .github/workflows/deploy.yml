@@ -13,17 +13,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Stop existing containers
-        run: docker compose down || true
-        continue-on-error: true
+      - name: Get version
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "VERSION=v0.1.0-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
 
-      - name: Build and deploy containers
-        run: docker compose up -d --build
+      - name: Build backend image
+        run: |
+          docker build -t openextreme-backend:${{ steps.version.outputs.VERSION }} \
+            -t openextreme-backend:latest \
+            --build-arg VERSION=${{ steps.version.outputs.VERSION }} \
+            --build-arg BUILD_DATE=${{ steps.version.outputs.BUILD_DATE }} \
+            -f Dockerfile .
 
-      - name: Wait for services to be ready
-        run: sleep 10
+      - name: Build frontend image
+        run: |
+          docker build -t openextreme-frontend:${{ steps.version.outputs.VERSION }} \
+            -t openextreme-frontend:latest \
+            -f web/Dockerfile ./web
+
+      - name: Update services (rolling restart)
+        run: |
+          docker compose up -d --no-deps backend
+          sleep 5
+          docker compose up -d --no-deps frontend
+          sleep 5
+          docker compose up -d --no-deps nginx
 
       - name: Check deployment status
         run: |
           docker compose ps
           curl -f http://localhost:9301/health || echo "Warning: Health check failed"
+
+      - name: Tag successful deployment
+        run: |
+          echo "Deployed version ${{ steps.version.outputs.VERSION }} at ${{ steps.version.outputs.BUILD_DATE }}"

@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
 
+ARG VERSION=dev
+ARG BUILD_DATE=unknown
+
 WORKDIR /app
 
 # Install dependencies
@@ -13,8 +16,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
+# Build binary with version info
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -a -installsuffix cgo \
+    -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
+    -o server ./cmd/server
 
 # Final stage
 FROM alpine:3.19

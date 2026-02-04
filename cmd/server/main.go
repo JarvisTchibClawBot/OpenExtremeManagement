@@ -9,6 +9,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var (
+	Version   = "dev"
+	BuildDate = "unknown"
+)
+
 func main() {
 	// Load .env file if exists
 	godotenv.Load()
@@ -24,7 +29,7 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("🚀 OpenExtremeManagement starting on port %s", port)
+	log.Printf("🚀 OpenExtremeManagement %s (built %s) starting on port %s", Version, BuildDate, port)
 	if err := server.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

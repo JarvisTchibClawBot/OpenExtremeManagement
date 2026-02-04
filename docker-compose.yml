@@ -19,6 +19,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - ENVIRONMENT=production
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+    volumes:
+      - backend_data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -71,3 +73,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  backend_data:
