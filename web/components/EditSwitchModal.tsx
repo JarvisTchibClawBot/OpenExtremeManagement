@@ -23,7 +23,7 @@ export default function EditSwitchModal({ isOpen, switchData, onClose, onSuccess
   const [ipAddress, setIpAddress] = useState('');
   const [port, setPort] = useState('9443');
   const [useHttps, setUseHttps] = useState(true);
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('rwa');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -143,7 +143,7 @@ export default function EditSwitchModal({ isOpen, switchData, onClose, onSuccess
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-extreme-blue focus:border-transparent transition"
-              placeholder="admin"
+              placeholder="rwa"
               required
             />
           </div>
