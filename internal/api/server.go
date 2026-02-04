@@ -165,7 +165,23 @@ func (s *Server) createSwitch(c *gin.Context) {
 }
 
 func (s *Server) deleteSwitch(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.switches[id]; !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	delete(s.switches, id)
+	c.JSON(http.StatusOK, gin.H{"message": "Switch deleted"})
 }
 
 // Background sync loop

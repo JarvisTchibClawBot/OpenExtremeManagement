@@ -36,6 +36,8 @@ export default function SwitchesPage() {
   const [switches, setSwitches] = useState<Switch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -55,6 +57,13 @@ export default function SwitchesPage() {
     return () => clearInterval(interval);
   }, [router]);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const fetchSwitches = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -66,6 +75,19 @@ export default function SwitchesPage() {
       console.error('Failed to fetch switches:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/v1/switches/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDeleteConfirm(null);
+      fetchSwitches();
+    } catch (err) {
+      console.error('Failed to delete switch:', err);
     }
   };
 
@@ -188,12 +210,50 @@ export default function SwitchesPage() {
                     <td className="px-6 py-4 text-gray-500 text-sm">
                       {sw.last_sync ? new Date(sw.last_sync).toLocaleTimeString() : '-'}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-gray-400 hover:text-white transition">
+                    <td className="px-6 py-4 text-right relative">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === sw.id ? null : sw.id);
+                        }}
+                        className="text-gray-400 hover:text-white transition p-1 rounded hover:bg-gray-700"
+                      >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                         </svg>
                       </button>
+                      
+                      {/* Dropdown Menu */}
+                      {openMenuId === sw.id && (
+                        <div className="absolute right-0 mt-2 w-48 bg-gray-700 rounded-lg shadow-xl z-10 py-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // TODO: Implement edit
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-gray-300 hover:bg-gray-600 hover:text-white flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirm(sw.id);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-red-400 hover:bg-gray-600 hover:text-red-300 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -208,6 +268,30 @@ export default function SwitchesPage() {
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={handleSwitchAdded}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">Delete Switch?</h3>
+            <p className="text-gray-400 mb-6">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
