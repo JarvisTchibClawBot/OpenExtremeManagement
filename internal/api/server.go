@@ -649,39 +649,3 @@ func (s *Server) fetchSystemInfo(sw *Switch) (*SystemInfo, error) {
 
 
 
-// extractOpenAPIFromGzip extracts openapi.yaml from a .tar.gz archive
-func extractOpenAPIFromGzip(data []byte) (string, error) {
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return "", fmt.Errorf("failed to create gzip reader: %v", err)
-	}
-	defer gzReader.Close()
-
-	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
-
-	// Look for openapi.yaml in the archive
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", fmt.Errorf("failed to read tar: %v", err)
-		}
-
-		// Check if this is the openapi.yaml file
-		if strings.HasSuffix(header.Name, "openapi.yaml") || strings.HasSuffix(header.Name, "openapi.yml") {
-			// Read the file content
-			content, err := io.ReadAll(tarReader)
-			if err != nil {
-				return "", fmt.Errorf("failed to read openapi.yaml: %v", err)
-			}
-			return string(content), nil
-		}
-	}
-
-	return "", fmt.Errorf("openapi.yaml not found in archive")
-}
-
