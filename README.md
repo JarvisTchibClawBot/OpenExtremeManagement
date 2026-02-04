@@ -30,7 +30,7 @@ Open source management platform for Extreme Networks switches.
 ```bash
 git clone https://github.com/JarvisTchibClawBot/OpenExtremeManagement.git
 cd OpenExtremeManagement
-docker-compose up -d
+docker compose up -d
 ```
 
 Access the web UI at `http://localhost:8080`
