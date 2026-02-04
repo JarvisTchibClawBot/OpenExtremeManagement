@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,12 +15,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// HTTP client with TLS skip verify for self-signed certs
+var insecureClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	},
+}
+
 // Switch represents a managed switch
 type Switch struct {
 	ID          int          `json:"id"`
 	Name        string       `json:"name"`
 	IPAddress   string       `json:"ip_address"`
 	Port        int          `json:"port"`
+	UseHTTPS    bool         `json:"use_https"`
 	Username    string       `json:"username"`
 	Password    string       `json:"-"`
 	Status      string       `json:"status"`
@@ -134,6 +144,7 @@ func (s *Server) getSwitch(c *gin.Context) {
 type CreateSwitchRequest struct {
 	IPAddress string `json:"ip_address" binding:"required"`
 	Port      int    `json:"port" binding:"required"`
+	UseHTTPS  *bool  `json:"use_https"` // Pointer to detect if provided, defaults to true
 	Username  string `json:"username" binding:"required"`
 	Password  string `json:"password" binding:"required"`
 }
@@ -145,12 +156,19 @@ func (s *Server) createSwitch(c *gin.Context) {
 		return
 	}
 
+	// Default to HTTPS if not specified
+	useHTTPS := true
+	if req.UseHTTPS != nil {
+		useHTTPS = *req.UseHTTPS
+	}
+
 	s.mu.Lock()
 	sw := &Switch{
 		ID:        s.nextID,
 		Name:      fmt.Sprintf("%s:%d", req.IPAddress, req.Port), // Temporary name until sync
 		IPAddress: req.IPAddress,
 		Port:      req.Port,
+		UseHTTPS:  useHTTPS,
 		Username:  req.Username,
 		Password:  req.Password,
 		Status:    "connecting",
@@ -276,7 +294,11 @@ func (s *Server) syncSwitch(sw *Switch) {
 }
 
 func (s *Server) authenticateSwitch(sw *Switch) error {
-	url := fmt.Sprintf("http://%s:%d/rest/openapi/auth/token", sw.IPAddress, sw.Port)
+	protocol := "http"
+	if sw.UseHTTPS {
+		protocol = "https"
+	}
+	url := fmt.Sprintf("%s://%s:%d/rest/openapi/auth/token", protocol, sw.IPAddress, sw.Port)
 
 	authReq := map[string]interface{}{
 		"username": sw.Username,
@@ -285,7 +307,10 @@ func (s *Server) authenticateSwitch(sw *Switch) error {
 	}
 
 	body, _ := json.Marshal(authReq)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := insecureClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("connection failed: %v", err)
 	}
@@ -313,13 +338,16 @@ func (s *Server) authenticateSwitch(sw *Switch) error {
 }
 
 func (s *Server) fetchSystemInfo(sw *Switch) (*SystemInfo, error) {
-	url := fmt.Sprintf("http://%s:%d/rest/openapi/v0/state/system", sw.IPAddress, sw.Port)
+	protocol := "http"
+	if sw.UseHTTPS {
+		protocol = "https"
+	}
+	url := fmt.Sprintf("%s://%s:%d/rest/openapi/v0/state/system", protocol, sw.IPAddress, sw.Port)
 
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("X-Auth-Token", sw.AuthToken)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := insecureClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}

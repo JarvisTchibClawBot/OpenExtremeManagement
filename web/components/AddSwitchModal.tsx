@@ -12,6 +12,7 @@ interface AddSwitchModalProps {
 export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitchModalProps) {
   const [ipAddress, setIpAddress] = useState('');
   const [port, setPort] = useState('9443');
+  const [useHttps, setUseHttps] = useState(true);
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,6 +31,7 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
         { 
           ip_address: ipAddress, 
           port: parseInt(port),
+          use_https: useHttps,
           username,
           password
         },
@@ -38,6 +40,7 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
       
       setIpAddress('');
       setPort('9443');
+      setUseHttps(true);
       setUsername('admin');
       setPassword('');
       onSuccess();
@@ -97,6 +100,23 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
                 required
               />
             </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={useHttps}
+                  onChange={(e) => setUseHttps(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-extreme-blue transition-colors"></div>
+                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+              </div>
+              <span className="text-gray-300 text-sm font-medium">Use HTTPS</span>
+              <span className="text-xs text-gray-500">(recommended for production)</span>
+            </label>
           </div>
 
           <div className="mb-4">
