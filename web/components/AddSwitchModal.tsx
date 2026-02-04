@@ -10,7 +10,6 @@ interface AddSwitchModalProps {
 }
 
 export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitchModalProps) {
-  const [name, setName] = useState('');
   const [ipAddress, setIpAddress] = useState('');
   const [port, setPort] = useState('9443');
   const [username, setUsername] = useState('admin');
@@ -29,7 +28,6 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
       const token = localStorage.getItem('token');
       await axios.post('/api/v1/switches', 
         { 
-          name, 
           ip_address: ipAddress, 
           port: parseInt(port),
           username,
@@ -38,7 +36,6 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
         { headers: { Authorization: `Bearer ${token}` }}
       );
       
-      setName('');
       setIpAddress('');
       setPort('9443');
       setUsername('admin');
@@ -53,7 +50,7 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">Add Fabric Engine Switch</h2>
           <button
@@ -73,20 +70,6 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
         )}
 
         <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-300 text-sm font-medium mb-2">
-              Switch Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-extreme-blue focus:border-transparent transition"
-              placeholder="e.g., Core Switch 1"
-              required
-            />
-          </div>
-
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="col-span-2">
               <label className="block text-gray-300 text-sm font-medium mb-2">
@@ -160,7 +143,7 @@ export default function AddSwitchModal({ isOpen, onClose, onSuccess }: AddSwitch
               disabled={isLoading}
               className="flex-1 px-4 py-3 bg-gradient-to-r from-extreme-purple to-extreme-blue text-white font-semibold rounded-lg hover:opacity-90 transition disabled:opacity-50"
             >
-              {isLoading ? 'Adding...' : 'Add Switch'}
+              {isLoading ? 'Connecting...' : 'Add Switch'}
             </button>
           </div>
         </form>

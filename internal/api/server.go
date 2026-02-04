@@ -131,7 +131,6 @@ func (s *Server) getSwitch(c *gin.Context) {
 }
 
 type CreateSwitchRequest struct {
-	Name      string `json:"name" binding:"required"`
 	IPAddress string `json:"ip_address" binding:"required"`
 	Port      int    `json:"port" binding:"required"`
 	Username  string `json:"username" binding:"required"`
@@ -148,7 +147,7 @@ func (s *Server) createSwitch(c *gin.Context) {
 	s.mu.Lock()
 	sw := &Switch{
 		ID:        s.nextID,
-		Name:      req.Name,
+		Name:      fmt.Sprintf("%s:%d", req.IPAddress, req.Port), // Temporary name until sync
 		IPAddress: req.IPAddress,
 		Port:      req.Port,
 		Username:  req.Username,
@@ -227,6 +226,10 @@ func (s *Server) syncSwitch(sw *Switch) {
 	sw.Status = "online"
 	sw.LastSync = &now
 	sw.SystemInfo = systemInfo
+	// Update name from sysName
+	if systemInfo.SysName != "" {
+		sw.Name = systemInfo.SysName
+	}
 	s.mu.Unlock()
 
 	log.Printf("✅ Synced %s - %s (%s)", sw.Name, systemInfo.ModelName, systemInfo.FirmwareVersion)
