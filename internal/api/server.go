@@ -120,6 +120,7 @@ func (s *Server) setupRoutes() {
 			protected.GET("/switches/:id/ports", s.getPorts)
 			protected.PUT("/switches/:id/system", s.updateSystemInfo)
 			protected.POST("/switches/:id/fetch-schema", s.fetchSchema)
+			protected.GET("/switches/:id/schema", s.downloadSchema)
 		}
 
 		// Public upload endpoint (no auth required as it's called by the switch)
@@ -724,4 +725,34 @@ func (s *Server) uploadSchema(c *gin.Context) {
 
 	log.Printf("✅ Received OpenAPI schema for switch %d (%d bytes)", switchID, len(schemaBytes))
 	c.JSON(http.StatusOK, gin.H{"message": "Schema uploaded successfully"})
+}
+
+// downloadSchema returns the stored OpenAPI schema for download
+func (s *Server) downloadSchema(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	s.mu.RLock()
+	sw, exists := s.switches[id]
+	s.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	if sw.OpenAPISchema == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No schema available. Please fetch it first."})
+		return
+	}
+
+	// Set headers for file download
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=openapi-%s.yaml", sw.Name))
+	c.Header("Content-Type", "application/x-yaml")
+	c.String(http.StatusOK, sw.OpenAPISchema)
 }

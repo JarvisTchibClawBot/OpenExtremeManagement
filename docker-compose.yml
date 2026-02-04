@@ -57,7 +57,7 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
-  # Mock Extreme Networks Switch for testing
+  # Mock Extreme Networks Switch for testing (dev only)
   mock-switch:
     build:
       context: ./mock
@@ -65,6 +65,8 @@ services:
     ports:
       - "9443:9443"
     restart: unless-stopped
+    profiles:
+      - dev
 
 volumes:
   postgres_data:

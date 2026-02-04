@@ -30,6 +30,8 @@ interface Switch {
   port: number;
   status: string;
   system_info: SystemInfo | null;
+  openapi_schema?: string;
+  schema_fetched_at?: string;
 }
 
 export default function SwitchSystemPage() {
@@ -135,11 +137,39 @@ export default function SwitchSystemPage() {
       );
 
       setSchemaMessage(response.data.message || 'Schema fetch requested successfully');
-      setTimeout(() => setSchemaMessage(''), 10000);
+      
+      // Refresh switch data after a few seconds to get the schema
+      setTimeout(() => {
+        fetchSwitch();
+        setSchemaMessage('');
+      }, 5000);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch schema');
     } finally {
       setIsFetchingSchema(false);
+    }
+  };
+
+  const handleDownloadSchema = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`/api/v1/switches/${switchId}/schema`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+
+      // Create a blob and download it
+      const blob = new Blob([response.data], { type: 'application/x-yaml' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `openapi-${switchData?.name || switchId}.yaml`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to download schema');
     }
   };
 
@@ -169,16 +199,28 @@ export default function SwitchSystemPage() {
           </div>
           {!isEditing ? (
             <div className="flex gap-3">
-              <button
-                onClick={handleFetchSchema}
-                disabled={isFetchingSchema}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition disabled:opacity-50 flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                </svg>
-                {isFetchingSchema ? 'Fetching...' : 'Fetch OpenAPI Schema'}
-              </button>
+              {switchData.openapi_schema ? (
+                <button
+                  onClick={handleDownloadSchema}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Schema
+                </button>
+              ) : (
+                <button
+                  onClick={handleFetchSchema}
+                  disabled={isFetchingSchema}
+                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                  </svg>
+                  {isFetchingSchema ? 'Fetching...' : 'Fetch OpenAPI Schema'}
+                </button>
+              )}
               <button
                 onClick={() => setIsEditing(true)}
                 className="px-4 py-2 bg-gradient-to-r from-extreme-purple to-extreme-blue text-white font-semibold rounded-lg hover:opacity-90 transition flex items-center gap-2"
