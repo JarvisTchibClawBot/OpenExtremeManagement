@@ -28,7 +28,6 @@ export default function SwitchList() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchSwitches = async () => {
     try {
@@ -47,23 +46,21 @@ export default function SwitchList() {
 
   useEffect(() => {
     fetchSwitches();
-    
-    // Auto-refresh every 10 seconds
     const interval = setInterval(fetchSwitches, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // Close menu when clicking outside
+  // Close menu when clicking anywhere
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    const handleClick = () => setOpenMenuId(null);
+    if (openMenuId !== null) {
+      // Delay to avoid closing immediately on the same click
+      setTimeout(() => {
+        document.addEventListener('click', handleClick);
+      }, 0);
+      return () => document.removeEventListener('click', handleClick);
+    }
+  }, [openMenuId]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -100,7 +97,8 @@ export default function SwitchList() {
     setOpenMenuId(openMenuId === id ? null : id);
   };
 
-  const handleRefresh = async (sw: Switch) => {
+  const handleRefresh = async (sw: Switch, e: React.MouseEvent) => {
+    e.stopPropagation();
     setOpenMenuId(null);
     try {
       const token = localStorage.getItem('token');
@@ -113,7 +111,8 @@ export default function SwitchList() {
     }
   };
 
-  const handleDelete = async (sw: Switch) => {
+  const handleDelete = async (sw: Switch, e: React.MouseEvent) => {
+    e.stopPropagation();
     setOpenMenuId(null);
     if (!confirm(`Are you sure you want to delete "${sw.name}"?`)) {
       return;
@@ -129,9 +128,9 @@ export default function SwitchList() {
     }
   };
 
-  const handleEdit = (sw: Switch) => {
+  const handleEdit = (sw: Switch, e: React.MouseEvent) => {
+    e.stopPropagation();
     setOpenMenuId(null);
-    // TODO: Implement edit modal
     alert(`Edit functionality coming soon for "${sw.name}"`);
   };
 
@@ -164,7 +163,7 @@ export default function SwitchList() {
   }
 
   return (
-    <div className="bg-gray-800 rounded-xl overflow-visible">
+    <div className="bg-gray-800 rounded-xl">
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-700">
@@ -172,7 +171,6 @@ export default function SwitchList() {
             <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Address</th>
             <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Model</th>
             <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Version</th>
-            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ports</th>
             <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
             <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Last Sync</th>
             <th className="text-right py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
@@ -188,18 +186,12 @@ export default function SwitchList() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
                     </svg>
                   </div>
-                  <div>
-                    <p className="text-white font-medium">{sw.name}</p>
-                    {sw.system_info?.isDigitalTwin && (
-                      <span className="text-xs text-purple-400">Digital Twin</span>
-                    )}
-                  </div>
+                  <p className="text-white font-medium">{sw.name}</p>
                 </div>
               </td>
               <td className="py-4 px-6 text-gray-300">{sw.ip_address}:{sw.port}</td>
               <td className="py-4 px-6 text-gray-300">{sw.system_info?.modelName || '-'}</td>
               <td className="py-4 px-6 text-gray-300">{sw.system_info?.firmwareVersion || '-'}</td>
-              <td className="py-4 px-6 text-gray-300">{sw.system_info?.numPorts || '-'}</td>
               <td className="py-4 px-6">
                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(sw.status)}`}>
                   {getStatusLabel(sw.status)}
@@ -208,51 +200,50 @@ export default function SwitchList() {
               <td className="py-4 px-6 text-gray-400 text-sm">
                 {sw.last_sync ? new Date(sw.last_sync).toLocaleTimeString() : '-'}
               </td>
-              <td className="py-4 px-6 text-right relative">
-                <button
-                  onClick={(e) => handleMenuToggle(sw.id, e)}
-                  className="p-2 hover:bg-gray-700 rounded-lg transition text-gray-400 hover:text-white"
-                >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
-                  </svg>
-                </button>
-                
-                {openMenuId === sw.id && (
-                  <div 
-                    ref={menuRef}
-                    className="absolute right-6 top-12 bg-gray-700 rounded-lg shadow-xl border border-gray-600 py-1 z-50 min-w-[140px]"
+              <td className="py-4 px-6 text-right">
+                <div className="relative inline-block">
+                  <button
+                    onClick={(e) => handleMenuToggle(sw.id, e)}
+                    className="p-2 hover:bg-gray-700 rounded-lg transition text-gray-400 hover:text-white"
                   >
-                    <button
-                      onClick={() => handleRefresh(sw)}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Refresh
-                    </button>
-                    <button
-                      onClick={() => handleEdit(sw)}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Edit
-                    </button>
-                    <hr className="my-1 border-gray-600" />
-                    <button
-                      onClick={() => handleDelete(sw)}
-                      className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600 flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      Delete
-                    </button>
-                  </div>
-                )}
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                    </svg>
+                  </button>
+                  
+                  {openMenuId === sw.id && (
+                    <div className="absolute right-0 top-full mt-1 bg-gray-700 rounded-lg shadow-xl border border-gray-600 py-1 z-50 min-w-[140px]">
+                      <button
+                        onClick={(e) => handleRefresh(sw, e)}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh
+                      </button>
+                      <button
+                        onClick={(e) => handleEdit(sw, e)}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit
+                      </button>
+                      <hr className="my-1 border-gray-600" />
+                      <button
+                        onClick={(e) => handleDelete(sw, e)}
+                        className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
