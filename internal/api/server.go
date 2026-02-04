@@ -99,6 +99,7 @@ func (s *Server) setupRoutes() {
 			protected.GET("/switches/:id", s.getSwitch)
 			protected.POST("/switches", s.createSwitch)
 			protected.DELETE("/switches/:id", s.deleteSwitch)
+			protected.POST("/switches/:id/sync", s.syncSwitchEndpoint)
 		}
 	}
 }
@@ -182,6 +183,29 @@ func (s *Server) deleteSwitch(c *gin.Context) {
 
 	delete(s.switches, id)
 	c.JSON(http.StatusOK, gin.H{"message": "Switch deleted"})
+}
+
+func (s *Server) syncSwitchEndpoint(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	s.mu.RLock()
+	sw, exists := s.switches[id]
+	s.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	// Trigger sync in background
+	go s.syncSwitch(sw)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Sync triggered"})
 }
 
 // Background sync loop

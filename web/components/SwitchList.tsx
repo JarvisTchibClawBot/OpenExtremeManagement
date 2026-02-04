@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 
 interface SystemInfo {
@@ -27,6 +27,8 @@ export default function SwitchList() {
   const [switches, setSwitches] = useState<Switch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchSwitches = async () => {
     try {
@@ -49,6 +51,18 @@ export default function SwitchList() {
     // Auto-refresh every 10 seconds
     const interval = setInterval(fetchSwitches, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -81,6 +95,46 @@ export default function SwitchList() {
     }
   };
 
+  const handleMenuToggle = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenMenuId(openMenuId === id ? null : id);
+  };
+
+  const handleRefresh = async (sw: Switch) => {
+    setOpenMenuId(null);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`/api/v1/switches/${sw.id}/sync`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchSwitches();
+    } catch (err) {
+      console.error('Failed to refresh switch:', err);
+    }
+  };
+
+  const handleDelete = async (sw: Switch) => {
+    setOpenMenuId(null);
+    if (!confirm(`Are you sure you want to delete "${sw.name}"?`)) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/v1/switches/${sw.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchSwitches();
+    } catch (err) {
+      console.error('Failed to delete switch:', err);
+    }
+  };
+
+  const handleEdit = (sw: Switch) => {
+    setOpenMenuId(null);
+    // TODO: Implement edit modal
+    alert(`Edit functionality coming soon for "${sw.name}"`);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -110,67 +164,100 @@ export default function SwitchList() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {switches.map((sw) => (
-        <div
-          key={sw.id}
-          className="bg-gray-800 rounded-xl p-6 hover:bg-gray-750 transition cursor-pointer border border-gray-700 hover:border-extreme-blue/50"
-        >
-          <div className="flex items-start justify-between mb-4">
-            <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
-              <svg className="w-8 h-8 text-extreme-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-              </svg>
-            </div>
-            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(sw.status)}`}>
-              {getStatusLabel(sw.status)}
-            </span>
-          </div>
-
-          <h3 className="text-lg font-semibold text-white mb-1">{sw.name}</h3>
-          <p className="text-gray-400 text-sm mb-3">{sw.ip_address}:{sw.port}</p>
-
-          {sw.system_info ? (
-            <div className="space-y-2 pt-3 border-t border-gray-700">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Model</span>
-                <span className="text-white font-medium">{sw.system_info.modelName}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Version</span>
-                <span className="text-white">{sw.system_info.firmwareVersion}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">System Name</span>
-                <span className="text-white">{sw.system_info.sysName}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Ports</span>
-                <span className="text-white">{sw.system_info.numPorts}</span>
-              </div>
-              {sw.system_info.isDigitalTwin && (
-                <div className="mt-2">
-                  <span className="px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded-full">
-                    Digital Twin
-                  </span>
+    <div className="bg-gray-800 rounded-xl overflow-visible">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-gray-700">
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Name</th>
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Address</th>
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Model</th>
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Version</th>
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ports</th>
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+            <th className="text-left py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Last Sync</th>
+            <th className="text-right py-4 px-6 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {switches.map((sw) => (
+            <tr key={sw.id} className="border-b border-gray-700/50 hover:bg-gray-750 transition">
+              <td className="py-4 px-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-extreme-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">{sw.name}</p>
+                    {sw.system_info?.isDigitalTwin && (
+                      <span className="text-xs text-purple-400">Digital Twin</span>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="pt-3 border-t border-gray-700">
-              <p className="text-gray-500 text-sm">
-                {sw.status === 'connecting' ? 'Fetching system info...' : 'System info unavailable'}
-              </p>
-            </div>
-          )}
-
-          {sw.last_sync && (
-            <p className="text-xs text-gray-600 mt-3">
-              Last sync: {new Date(sw.last_sync).toLocaleTimeString()}
-            </p>
-          )}
-        </div>
-      ))}
+              </td>
+              <td className="py-4 px-6 text-gray-300">{sw.ip_address}:{sw.port}</td>
+              <td className="py-4 px-6 text-gray-300">{sw.system_info?.modelName || '-'}</td>
+              <td className="py-4 px-6 text-gray-300">{sw.system_info?.firmwareVersion || '-'}</td>
+              <td className="py-4 px-6 text-gray-300">{sw.system_info?.numPorts || '-'}</td>
+              <td className="py-4 px-6">
+                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(sw.status)}`}>
+                  {getStatusLabel(sw.status)}
+                </span>
+              </td>
+              <td className="py-4 px-6 text-gray-400 text-sm">
+                {sw.last_sync ? new Date(sw.last_sync).toLocaleTimeString() : '-'}
+              </td>
+              <td className="py-4 px-6 text-right relative">
+                <button
+                  onClick={(e) => handleMenuToggle(sw.id, e)}
+                  className="p-2 hover:bg-gray-700 rounded-lg transition text-gray-400 hover:text-white"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                  </svg>
+                </button>
+                
+                {openMenuId === sw.id && (
+                  <div 
+                    ref={menuRef}
+                    className="absolute right-6 top-12 bg-gray-700 rounded-lg shadow-xl border border-gray-600 py-1 z-50 min-w-[140px]"
+                  >
+                    <button
+                      onClick={() => handleRefresh(sw)}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => handleEdit(sw)}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <hr className="my-1 border-gray-600" />
+                    <button
+                      onClick={() => handleDelete(sw)}
+                      className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
