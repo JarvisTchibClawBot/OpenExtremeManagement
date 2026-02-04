@@ -25,18 +25,20 @@ var insecureClient = &http.Client{
 
 // Switch represents a managed switch
 type Switch struct {
-	ID          int          `json:"id"`
-	Name        string       `json:"name"`
-	IPAddress   string       `json:"ip_address"`
-	Port        int          `json:"port"`
-	UseHTTPS    bool         `json:"use_https"`
-	Username    string       `json:"username"`
-	Password    string       `json:"-"`
-	Status      string       `json:"status"`
-	LastSync    *time.Time   `json:"last_sync,omitempty"`
-	SystemInfo  *SystemInfo  `json:"system_info,omitempty"`
-	AuthToken   string       `json:"-"`
-	TokenExpiry time.Time    `json:"-"`
+	ID              int          `json:"id"`
+	Name            string       `json:"name"`
+	IPAddress       string       `json:"ip_address"`
+	Port            int          `json:"port"`
+	UseHTTPS        bool         `json:"use_https"`
+	Username        string       `json:"username"`
+	Password        string       `json:"-"`
+	Status          string       `json:"status"`
+	LastSync        *time.Time   `json:"last_sync,omitempty"`
+	SystemInfo      *SystemInfo  `json:"system_info,omitempty"`
+	AuthToken       string       `json:"-"`
+	TokenExpiry     time.Time    `json:"-"`
+	OpenAPISchema   string       `json:"openapi_schema,omitempty"`
+	SchemaFetchedAt *time.Time   `json:"schema_fetched_at,omitempty"`
 }
 
 // SystemInfo from Fabric Engine
@@ -54,12 +56,13 @@ type SystemInfo struct {
 }
 
 type Server struct {
-	router   *gin.Engine
-	config   *config.Config
-	switches map[int]*Switch
-	mu       sync.RWMutex
-	nextID   int
-	stopSync chan struct{}
+	router       *gin.Engine
+	config       *config.Config
+	switches     map[int]*Switch
+	uploadTokens map[string]int // token -> switchID mapping
+	mu           sync.RWMutex
+	nextID       int
+	stopSync     chan struct{}
 }
 
 func NewServer(cfg *config.Config) *Server {
@@ -82,11 +85,12 @@ func NewServer(cfg *config.Config) *Server {
 	})
 
 	server := &Server{
-		router:   router,
-		config:   cfg,
-		switches: make(map[int]*Switch),
-		nextID:   1,
-		stopSync: make(chan struct{}),
+		router:       router,
+		config:       cfg,
+		switches:     make(map[int]*Switch),
+		uploadTokens: make(map[string]int),
+		nextID:       1,
+		stopSync:     make(chan struct{}),
 	}
 
 	server.setupRoutes()
@@ -115,7 +119,12 @@ func (s *Server) setupRoutes() {
 			protected.POST("/switches/:id/sync", s.syncSwitchEndpoint)
 			protected.GET("/switches/:id/ports", s.getPorts)
 			protected.PUT("/switches/:id/system", s.updateSystemInfo)
+			protected.POST("/switches/:id/fetch-schema", s.fetchSchema)
 		}
+
+		// Public upload endpoint (no auth required as it's called by the switch)
+		v1.POST("/upload/schema/:token", s.uploadSchema)
+	}
 	}
 }
 
@@ -575,4 +584,145 @@ func (s *Server) fetchSystemInfo(sw *Switch) (*SystemInfo, error) {
 	}
 
 	return info, nil
+}
+
+// fetchSchema triggers the switch to upload its OpenAPI schema
+func (s *Server) fetchSchema(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	s.mu.RLock()
+	sw, exists := s.switches[id]
+	s.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	// Generate a unique upload token
+	token := fmt.Sprintf("%d-%d", id, time.Now().Unix())
+	
+	s.mu.Lock()
+	s.uploadTokens[token] = id
+	s.mu.Unlock()
+
+	// Clean up token after 10 minutes
+	go func() {
+		time.Sleep(10 * time.Minute)
+		s.mu.Lock()
+		delete(s.uploadTokens, token)
+		s.mu.Unlock()
+	}()
+
+	// Prepare the upload request to the switch
+	protocol := "http"
+	if sw.UseHTTPS {
+		protocol = "https"
+	}
+	
+	// Get server's external IP or hostname
+	uploadURL := fmt.Sprintf("http://10.201.100.202:9301/api/v1/upload/schema/%s", token)
+	
+	url := fmt.Sprintf("%s://%s:%d/rest/openapi/v0/operation/system/debug-info/:upload", protocol, sw.IPAddress, sw.Port)
+	
+	requestBody := map[string]interface{}{
+		"URL":      uploadURL,
+		"infoType": []string{"OPENAPI_SCHEMA"},
+		"username": "upload",     // Placeholder credentials for HTTP upload
+		"password": "upload123",
+	}
+
+	body, _ := json.Marshal(requestBody)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Auth-Token", sw.AuthToken)
+
+	resp, err := insecureClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to request schema: %v", err)})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Switch returned error: %s", string(bodyBytes))})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Schema fetch requested. The switch will upload the schema shortly.",
+		"token":   token,
+	})
+}
+
+// uploadSchema receives the OpenAPI schema file from the switch
+func (s *Server) uploadSchema(c *gin.Context) {
+	token := c.Param("token")
+
+	s.mu.RLock()
+	switchID, exists := s.uploadTokens[token]
+	s.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid or expired upload token"})
+		return
+	}
+
+	// Read the uploaded file
+	file, err := c.FormFile("file")
+	if err != nil {
+		// Try reading from request body instead
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read upload"})
+			return
+		}
+
+		s.mu.Lock()
+		sw := s.switches[switchID]
+		if sw != nil {
+			sw.OpenAPISchema = string(bodyBytes)
+			now := time.Now()
+			sw.SchemaFetchedAt = &now
+		}
+		delete(s.uploadTokens, token)
+		s.mu.Unlock()
+
+		log.Printf("✅ Received OpenAPI schema for switch %d (%d bytes)", switchID, len(bodyBytes))
+		c.JSON(http.StatusOK, gin.H{"message": "Schema uploaded successfully"})
+		return
+	}
+
+	// Handle multipart file upload
+	openedFile, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer openedFile.Close()
+
+	schemaBytes, err := io.ReadAll(openedFile)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+		return
+	}
+
+	s.mu.Lock()
+	sw := s.switches[switchID]
+	if sw != nil {
+		sw.OpenAPISchema = string(schemaBytes)
+		now := time.Now()
+		sw.SchemaFetchedAt = &now
+	}
+	delete(s.uploadTokens, token)
+	s.mu.Unlock()
+
+	log.Printf("✅ Received OpenAPI schema for switch %d (%d bytes)", switchID, len(schemaBytes))
+	c.JSON(http.StatusOK, gin.H{"message": "Schema uploaded successfully"})
 }
