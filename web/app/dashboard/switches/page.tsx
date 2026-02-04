@@ -256,15 +256,15 @@ export default function SwitchesPage() {
     <div className="min-h-screen bg-gray-900 flex">
       <Sidebar user={user} onLogout={handleLogout} />
       
-      <main className="flex-1 p-8">
-        <div className="flex justify-between items-center mb-6">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-white">Switches</h1>
-            <p className="text-gray-400 mt-1">Manage your Fabric Engine switches</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Switches</h1>
+            <p className="text-gray-400 mt-1 text-sm sm:text-base">Manage your Fabric Engine switches</p>
           </div>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-extreme-purple to-extreme-blue text-white font-semibold rounded-lg hover:opacity-90 transition flex items-center gap-2"
+            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-extreme-purple to-extreme-blue text-white font-semibold rounded-lg hover:opacity-90 transition flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -274,7 +274,7 @@ export default function SwitchesPage() {
         </div>
 
         {/* Search & Filters */}
-        <div className="mb-6 flex gap-4">
+        <div className="mb-6 flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
               <input
@@ -331,7 +331,79 @@ export default function SwitchesPage() {
           </div>
         ) : (
           <>
-            <div className="bg-gray-800 rounded-xl overflow-visible mb-4">
+            {/* Mobile Card View */}
+            <div className="block md:hidden space-y-4 mb-4">
+              {paginatedSwitches.map((sw) => (
+                <div key={sw.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                  <div className="flex justify-between items-start mb-3">
+                    <Link
+                      href={`/dashboard/switches/${sw.id}/overview`}
+                      className="text-white font-medium hover:text-extreme-blue transition flex-1"
+                    >
+                      {sw.name}
+                    </Link>
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenMenuId(openMenuId === sw.id ? null : sw.id)}
+                        className="p-1 text-gray-400 hover:text-white transition"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+                      {openMenuId === sw.id && (
+                        <div className="absolute right-0 mt-2 w-48 bg-gray-700 rounded-lg shadow-lg z-10 py-1">
+                          <button
+                            onClick={() => {
+                              setEditSwitch(sw);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-white hover:bg-gray-600 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSwitch(sw.id)}
+                            className="w-full px-4 py-2 text-left text-red-400 hover:bg-gray-600 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">IP:</span>
+                      <span className="text-white">{sw.ip_address}:{sw.port}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Model:</span>
+                      <span className="text-white">{sw.system_info?.modelName || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Version:</span>
+                      <span className="text-white">{sw.system_info?.firmwareVersion || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Status:</span>
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full inline-block ${getStatusColor(sw.status)}`}>
+                        {sw.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block bg-gray-800 rounded-xl overflow-visible mb-4">
               <table className="w-full">
                 <thead className="bg-gray-700/50">
                   <tr>
