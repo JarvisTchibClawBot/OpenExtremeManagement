@@ -41,14 +41,16 @@ type Switch struct {
 
 // SystemInfo from Fabric Engine
 type SystemInfo struct {
-	SysName        string `json:"sysName"`
-	SysDescription string `json:"sysDescription"`
-	ModelName      string `json:"modelName"`
+	SysName         string `json:"sysName"`
+	SysDescription  string `json:"sysDescription"`
+	SysLocation     string `json:"sysLocation"`
+	SysContact      string `json:"sysContact"`
+	ModelName       string `json:"modelName"`
 	FirmwareVersion string `json:"firmwareVersion"`
-	NosType        string `json:"nosType"`
-	ChassisId      string `json:"chassisId"`
-	NumPorts       int    `json:"numPorts"`
-	IsDigitalTwin  bool   `json:"isDigitalTwin"`
+	NosType         string `json:"nosType"`
+	ChassisId       string `json:"chassisId"`
+	NumPorts        int    `json:"numPorts"`
+	IsDigitalTwin   bool   `json:"isDigitalTwin"`
 }
 
 type Server struct {
@@ -111,6 +113,8 @@ func (s *Server) setupRoutes() {
 			protected.PUT("/switches/:id", s.updateSwitch)
 			protected.DELETE("/switches/:id", s.deleteSwitch)
 			protected.POST("/switches/:id/sync", s.syncSwitchEndpoint)
+			protected.GET("/switches/:id/ports", s.getPorts)
+			protected.PUT("/switches/:id/system", s.updateSystemInfo)
 		}
 	}
 }
@@ -139,7 +143,23 @@ func (s *Server) listSwitches(c *gin.Context) {
 }
 
 func (s *Server) getSwitch(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	s.mu.RLock()
+	sw, exists := s.switches[id]
+	s.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"switch": sw})
 }
 
 type CreateSwitchRequest struct {
@@ -286,6 +306,109 @@ func (s *Server) syncSwitchEndpoint(c *gin.Context) {
 	go s.syncSwitch(sw)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Sync triggered"})
+}
+
+// Port represents a switch port
+type Port struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // up, down, disabled
+	Speed  string `json:"speed"`
+}
+
+func (s *Server) getPorts(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	s.mu.RLock()
+	sw, exists := s.switches[id]
+	s.mu.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	// Generate mock ports based on numPorts
+	numPorts := 24
+	if sw.SystemInfo != nil {
+		numPorts = sw.SystemInfo.NumPorts
+	}
+
+	ports := make([]Port, numPorts)
+	for i := 0; i < numPorts; i++ {
+		status := "up"
+		if i%7 == 0 {
+			status = "down"
+		} else if i%11 == 0 {
+			status = "disabled"
+		}
+
+		speed := "1G"
+		if i%4 == 0 {
+			speed = "10G"
+		}
+
+		ports[i] = Port{
+			ID:     i + 1,
+			Name:   fmt.Sprintf("GigabitEthernet 1/0/%d", i+1),
+			Status: status,
+			Speed:  speed,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ports": ports})
+}
+
+type UpdateSystemInfoRequest struct {
+	SysName     string `json:"sysName"`
+	SysLocation string `json:"sysLocation"`
+	SysContact  string `json:"sysContact"`
+}
+
+func (s *Server) updateSystemInfo(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	var req UpdateSystemInfoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	s.mu.Lock()
+	sw, exists := s.switches[id]
+	if !exists {
+		s.mu.Unlock()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	if sw.SystemInfo == nil {
+		sw.SystemInfo = &SystemInfo{}
+	}
+
+	// Update system info
+	if req.SysName != "" {
+		sw.SystemInfo.SysName = req.SysName
+		sw.Name = req.SysName // Also update the main name
+	}
+	sw.SystemInfo.SysLocation = req.SysLocation
+	sw.SystemInfo.SysContact = req.SysContact
+	// TODO: Real API calls to update sysLocation and sysContact on the switch
+	// For now we just store them in memory (mock)
+	
+	s.mu.Unlock()
+
+	c.JSON(http.StatusOK, gin.H{"switch": sw})
 }
 
 // Background sync loop
