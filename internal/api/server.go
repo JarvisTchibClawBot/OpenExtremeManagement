@@ -125,7 +125,6 @@ func (s *Server) setupRoutes() {
 		// Public upload endpoint (no auth required as it's called by the switch)
 		v1.POST("/upload/schema/:token", s.uploadSchema)
 	}
-	}
 }
 
 func (s *Server) Run(addr string) error {
