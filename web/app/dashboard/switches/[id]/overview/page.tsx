@@ -124,9 +124,9 @@ export default function SwitchOverviewPage() {
     <div className="min-h-screen bg-gray-900 flex">
       <SwitchSidebar user={user} switchData={switchData} onLogout={handleLogout} />
       
-      <main className="flex-1 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white">Overview</h1>
+      <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Overview</h1>
           <p className="text-gray-400 mt-1">{switchData.system_info?.modelName || 'Switch'} - Port Status</p>
         </div>
 
