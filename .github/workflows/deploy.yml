@@ -36,11 +36,11 @@ jobs:
 
       - name: Update services (rolling restart)
         run: |
-          docker compose up -d --no-deps backend
+          docker compose up -d --no-deps --force-recreate backend
           sleep 5
-          docker compose up -d --no-deps frontend
+          docker compose up -d --no-deps --force-recreate frontend
           sleep 5
-          docker compose up -d --no-deps nginx
+          docker compose up -d --no-deps --force-recreate nginx
 
       - name: Check deployment status
         run: |
