@@ -396,31 +396,90 @@ func (s *Server) updateSystemInfo(c *gin.Context) {
 		return
 	}
 
-	s.mu.Lock()
+	s.mu.RLock()
 	sw, exists := s.switches[id]
+	s.mu.RUnlock()
+
 	if !exists {
-		s.mu.Unlock()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
 		return
 	}
 
+	// Authenticate if needed
+	if sw.AuthToken == "" || time.Now().After(sw.TokenExpiry) {
+		if err := s.authenticateSwitch(sw); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed: " + err.Error()})
+			return
+		}
+	}
+
+	// Update system info on the switch
+	if err := s.pushSystemInfoToSwitch(sw, &req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update switch: " + err.Error()})
+		return
+	}
+
+	// Update local cache
+	s.mu.Lock()
 	if sw.SystemInfo == nil {
 		sw.SystemInfo = &SystemInfo{}
 	}
-
-	// Update system info
 	if req.SysName != "" {
 		sw.SystemInfo.SysName = req.SysName
-		sw.Name = req.SysName // Also update the main name
+		sw.Name = req.SysName
 	}
 	sw.SystemInfo.SysLocation = req.SysLocation
 	sw.SystemInfo.SysContact = req.SysContact
-	// TODO: Real API calls to update sysLocation and sysContact on the switch
-	// For now we just store them in memory (mock)
-	
 	s.mu.Unlock()
 
+	log.Printf("✅ Updated system info for %s", sw.Name)
 	c.JSON(http.StatusOK, gin.H{"switch": sw})
+}
+
+// pushSystemInfoToSwitch sends system info updates to the switch
+func (s *Server) pushSystemInfoToSwitch(sw *Switch, req *UpdateSystemInfoRequest) error {
+	protocol := "http"
+	if sw.UseHTTPS {
+		protocol = "https"
+	}
+
+	// Extreme Networks switches typically use PATCH for partial updates
+	url := fmt.Sprintf("%s://%s:%d/rest/openapi/v0/operation/system", protocol, sw.IPAddress, sw.Port)
+
+	// Build payload with only provided fields
+	payload := make(map[string]interface{})
+	if req.SysName != "" {
+		payload["sysName"] = req.SysName
+	}
+	if req.SysLocation != "" {
+		payload["sysLocation"] = req.SysLocation
+	}
+	if req.SysContact != "" {
+		payload["sysContact"] = req.SysContact
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	httpReq, _ := http.NewRequest("PATCH", url, bytes.NewReader(jsonData))
+	httpReq.Header.Set("X-Auth-Token", sw.AuthToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := insecureClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
 
 // Background sync loop
@@ -558,6 +617,8 @@ func (s *Server) fetchSystemInfo(sw *Switch) (*SystemInfo, error) {
 	var state struct {
 		SysName        string `json:"sysName"`
 		SysDescription string `json:"sysDescription"`
+		SysLocation    string `json:"sysLocation"`
+		SysContact     string `json:"sysContact"`
 		NosType        string `json:"nosType"`
 		ChassisId      string `json:"chassisId"`
 		IsDigitalTwin  bool   `json:"isDigitalTwin"`
@@ -575,6 +636,8 @@ func (s *Server) fetchSystemInfo(sw *Switch) (*SystemInfo, error) {
 	info := &SystemInfo{
 		SysName:        state.SysName,
 		SysDescription: state.SysDescription,
+		SysLocation:    state.SysLocation,
+		SysContact:     state.SysContact,
 		NosType:        state.NosType,
 		ChassisId:      state.ChassisId,
 		IsDigitalTwin:  state.IsDigitalTwin,
