@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import Sidebar from '@/components/Sidebar';
 import AddSwitchModal from '@/components/AddSwitchModal';
+import EditSwitchModal from '@/components/EditSwitchModal';
 
 interface User {
   id: number;
@@ -25,6 +26,8 @@ interface Switch {
   name: string;
   ip_address: string;
   port: number;
+  use_https?: boolean;
+  username?: string;
   status: string;
   last_sync: string | null;
   system_info: SystemInfo | null;
@@ -36,6 +39,7 @@ export default function SwitchesPage() {
   const [switches, setSwitches] = useState<Switch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editSwitch, setEditSwitch] = useState<Switch | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
@@ -251,7 +255,7 @@ export default function SwitchesPage() {
                             </button>
                             <button
                               onClick={() => {
-                                // TODO: Implement edit
+                                setEditSwitch(sw);
                                 setOpenMenuId(null);
                               }}
                               className="w-full px-4 py-2 text-left text-gray-300 hover:bg-gray-600 hover:text-white flex items-center gap-2"
@@ -290,6 +294,16 @@ export default function SwitchesPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={handleSwitchAdded}
+      />
+
+      <EditSwitchModal
+        isOpen={editSwitch !== null}
+        switchData={editSwitch}
+        onClose={() => setEditSwitch(null)}
+        onSuccess={() => {
+          setEditSwitch(null);
+          fetchSwitches();
+        }}
       />
 
       {/* Delete Confirmation Modal */}

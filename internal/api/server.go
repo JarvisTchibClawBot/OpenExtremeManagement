@@ -108,6 +108,7 @@ func (s *Server) setupRoutes() {
 			protected.GET("/switches", s.listSwitches)
 			protected.GET("/switches/:id", s.getSwitch)
 			protected.POST("/switches", s.createSwitch)
+			protected.PUT("/switches/:id", s.updateSwitch)
 			protected.DELETE("/switches/:id", s.deleteSwitch)
 			protected.POST("/switches/:id/sync", s.syncSwitchEndpoint)
 		}
@@ -201,6 +202,67 @@ func (s *Server) deleteSwitch(c *gin.Context) {
 
 	delete(s.switches, id)
 	c.JSON(http.StatusOK, gin.H{"message": "Switch deleted"})
+}
+
+type UpdateSwitchRequest struct {
+	IPAddress string `json:"ip_address"`
+	Port      int    `json:"port"`
+	UseHTTPS  *bool  `json:"use_https"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+}
+
+func (s *Server) updateSwitch(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid switch ID"})
+		return
+	}
+
+	var req UpdateSwitchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	s.mu.Lock()
+	sw, exists := s.switches[id]
+	if !exists {
+		s.mu.Unlock()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Switch not found"})
+		return
+	}
+
+	// Update fields
+	if req.IPAddress != "" {
+		sw.IPAddress = req.IPAddress
+	}
+	if req.Port != 0 {
+		sw.Port = req.Port
+	}
+	if req.UseHTTPS != nil {
+		sw.UseHTTPS = *req.UseHTTPS
+	}
+	if req.Username != "" {
+		sw.Username = req.Username
+	}
+	if req.Password != "" {
+		sw.Password = req.Password
+		// Reset auth token to force re-authentication
+		sw.AuthToken = ""
+		sw.TokenExpiry = time.Time{}
+	}
+
+	// Update name temporarily
+	sw.Name = fmt.Sprintf("%s:%d", sw.IPAddress, sw.Port)
+	sw.Status = "connecting"
+	s.mu.Unlock()
+
+	// Trigger re-sync
+	go s.syncSwitch(sw)
+
+	c.JSON(http.StatusOK, gin.H{"switch": sw})
 }
 
 func (s *Server) syncSwitchEndpoint(c *gin.Context) {
