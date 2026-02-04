@@ -30,8 +30,6 @@ interface Switch {
   port: number;
   status: string;
   system_info: SystemInfo | null;
-  openapi_schema?: string;
-  schema_fetched_at?: string;
 }
 
 export default function SwitchSystemPage() {
@@ -43,9 +41,7 @@ export default function SwitchSystemPage() {
   const [switchData, setSwitchData] = useState<Switch | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isFetchingSchema, setIsFetchingSchema] = useState(false);
   const [error, setError] = useState('');
-  const [schemaMessage, setSchemaMessage] = useState('');
 
   // Editable fields
   const [sysName, setSysName] = useState('');
@@ -123,56 +119,6 @@ export default function SwitchSystemPage() {
     setError('');
   };
 
-  const handleFetchSchema = async () => {
-    setIsFetchingSchema(true);
-    setSchemaMessage('');
-    setError('');
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(
-        `/api/v1/switches/${switchId}/fetch-schema`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setSchemaMessage(response.data.message || 'Schema fetch requested successfully');
-      
-      // Refresh switch data after a few seconds to get the schema
-      setTimeout(() => {
-        fetchSwitch();
-        setSchemaMessage('');
-      }, 5000);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch schema');
-    } finally {
-      setIsFetchingSchema(false);
-    }
-  };
-
-  const handleDownloadSchema = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`/api/v1/switches/${switchId}/schema`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-
-      // Create a blob and download it
-      const blob = new Blob([response.data], { type: 'application/x-yaml' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `openapi-${switchData?.name || switchId}.yaml`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to download schema');
-    }
-  };
-
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -198,39 +144,15 @@ export default function SwitchSystemPage() {
             <p className="text-gray-400 mt-1">View and edit system settings</p>
           </div>
           {!isEditing ? (
-            <div className="flex gap-3">
-              {switchData.openapi_schema ? (
-                <button
-                  onClick={handleDownloadSchema}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download Schema
-                </button>
-              ) : (
-                <button
-                  onClick={handleFetchSchema}
-                  disabled={isFetchingSchema}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                  </svg>
-                  {isFetchingSchema ? 'Fetching...' : 'Fetch OpenAPI Schema'}
-                </button>
-              )}
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-gradient-to-r from-extreme-purple to-extreme-blue text-white font-semibold rounded-lg hover:opacity-90 transition flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Edit
-              </button>
-            </div>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-4 py-2 bg-gradient-to-r from-extreme-purple to-extreme-blue text-white font-semibold rounded-lg hover:opacity-90 transition flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit
+            </button>
           ) : (
             <div className="flex gap-3">
               <button
@@ -254,12 +176,6 @@ export default function SwitchSystemPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
             <p className="text-red-400">{error}</p>
-          </div>
-        )}
-
-        {schemaMessage && (
-          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-lg">
-            <p className="text-green-400">{schemaMessage}</p>
           </div>
         )}
 
