@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,16 @@ import (
 var (
 	tokenStore = make(map[string]time.Time)
 	tokenMu    sync.RWMutex
+)
+
+// System configuration storage
+var (
+	systemConfig = SystemConfig{
+		SysName:     "5520-24T-FabricEngine",
+		SysLocation: "",
+		SysContact:  "",
+	}
+	systemMu sync.RWMutex
 )
 
 // AuthRequest represents the authentication request
@@ -28,6 +39,13 @@ type AuthRequest struct {
 type AuthResponse struct {
 	Token string `json:"token"`
 	TTL   int    `json:"ttl"`
+}
+
+// SystemConfig holds system configuration
+type SystemConfig struct {
+	SysName     string `json:"sysName"`
+	SysLocation string `json:"sysLocation"`
+	SysContact  string `json:"sysContact"`
 }
 
 // SystemState represents the system state response
@@ -70,6 +88,23 @@ type Card struct {
 	Vims            []string `json:"vims"`
 }
 
+// CLICommandRequest represents CLI commands to execute
+type CLICommandRequest struct {
+	Commands []string `json:"commands"`
+}
+
+// CLICommandExecution represents the response from CLI execution
+type CLICommandExecution struct {
+	Commands []CLICommandResult `json:"commands"`
+}
+
+// CLICommandResult represents result of a single CLI command
+type CLICommandResult struct {
+	Command string `json:"command"`
+	Output  string `json:"output"`
+	Status  string `json:"status"`
+}
+
 func main() {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
@@ -94,11 +129,13 @@ func main() {
 	protected.Use(authMiddleware())
 	{
 		protected.GET("/v0/state/system", getSystemState)
+		protected.POST("/v0/operation/system/cli", executeCLICommands)
 	}
 
 	log.Printf("🔌 Extreme Networks Fabric Engine Mock - Port 9443")
 	log.Printf("🔗 POST /rest/openapi/auth/token")
 	log.Printf("🔗 GET  /rest/openapi/v0/state/system (requires X-Auth-Token)")
+	log.Printf("🔗 POST /rest/openapi/v0/operation/system/cli (requires X-Auth-Token)")
 
 	if err := router.Run(":9443"); err != nil {
 		log.Fatalf("Failed to start mock server: %v", err)
@@ -164,6 +201,10 @@ func authMiddleware() gin.HandlerFunc {
 }
 
 func getSystemState(c *gin.Context) {
+	systemMu.RLock()
+	sysName := systemConfig.SysName
+	systemMu.RUnlock()
+
 	state := SystemState{
 		BootConfigType: "FACTORY_DEFAULT",
 		Cards: []Card{
@@ -198,9 +239,62 @@ func getSystemState(c *gin.Context) {
 		OpenApiSchemaVersion: "0.2.0",
 		RebootCount:          0,
 		SysDescription:       "5520-24T-FabricEngine (9.3.0.0)",
-		SysName:              "5520-24T-FabricEngine",
+		SysName:              sysName,
 		TelegrafVersion:      "1.21.4-58592c4a",
 	}
 
 	c.JSON(http.StatusOK, state)
+}
+
+func executeCLICommands(c *gin.Context) {
+	var req CLICommandRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	results := []CLICommandResult{}
+
+	systemMu.Lock()
+	defer systemMu.Unlock()
+
+	for _, cmd := range req.Commands {
+		result := CLICommandResult{
+			Command: cmd,
+			Status:  "SUCCESS",
+		}
+
+		// Parse and execute CLI commands
+		cmd = strings.TrimSpace(cmd)
+
+		if strings.HasPrefix(cmd, "hostname ") {
+			newName := strings.TrimPrefix(cmd, "hostname ")
+			newName = strings.TrimSpace(newName)
+			systemConfig.SysName = newName
+			result.Output = "Hostname changed to " + newName
+			log.Printf("📝 Mock: Hostname changed to: %s", newName)
+		} else if strings.HasPrefix(cmd, "snmp-server location ") {
+			location := strings.TrimPrefix(cmd, "snmp-server location ")
+			location = strings.TrimSpace(location)
+			systemConfig.SysLocation = location
+			result.Output = "SNMP location set to " + location
+			log.Printf("📝 Mock: Location changed to: %s", location)
+		} else if strings.HasPrefix(cmd, "snmp-server contact ") {
+			contact := strings.TrimPrefix(cmd, "snmp-server contact ")
+			contact = strings.TrimSpace(contact)
+			systemConfig.SysContact = contact
+			result.Output = "SNMP contact set to " + contact
+			log.Printf("📝 Mock: Contact changed to: %s", contact)
+		} else if cmd == "configure terminal" || cmd == "exit" {
+			result.Output = "OK"
+		} else {
+			result.Output = "Command executed"
+		}
+
+		results = append(results, result)
+	}
+
+	c.JSON(http.StatusOK, CLICommandExecution{
+		Commands: results,
+	})
 }
